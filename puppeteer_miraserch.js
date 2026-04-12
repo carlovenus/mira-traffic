@@ -58,35 +58,18 @@ async function waitForListings(page, timeout = 30000) {
 }
 
 async function clickFirstListingImage(page) {
-  await page.waitForSelector('[dir="rtl"] img', { visible: true, timeout: 30000 });
-  const firstImage = await page.$('[dir="rtl"] img');
+  await page.waitForSelector('.product-card', { visible: true, timeout: 30000 });
+  const firstProductCard = await page.$('.product-card');
 
-  if (!firstImage) {
-    throw new Error('No image found inside [dir="rtl"]');
+  if (!firstProductCard) {
+    throw new Error('No element found for selector .product-card');
   }
 
-  await firstImage.click();
-}
-
-async function randomVerticalScrollInRtl(page) {
-  await page.waitForSelector('[dir="rtl"]', { visible: true, timeout: 30000 });
-
-  await page.$eval('[dir="rtl"]', (rtlElement) => {
-    const maxScroll = Math.max(300, Math.min(1200, rtlElement.scrollHeight || 1200));
-    const delta = Math.floor(Math.random() * maxScroll);
-    const direction = Math.random() > 0.5 ? 1 : -1;
-
-    rtlElement.scrollBy({
-      top: direction * delta,
-      behavior: 'smooth'
-    });
-  });
+  await firstProductCard.click();
 }
 
 async function postListingsAction(page) {
   await delay(5000);
-  await randomVerticalScrollInRtl(page);
-  await delay(1000);
   await clickFirstListingImage(page);
   await delay(5000);
 }
