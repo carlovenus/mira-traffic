@@ -1,0 +1,13 @@
+{
+  "name": "mira-traffic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Puppeteer traffic script for miraserch.ai",
+  "scripts": {
+    "mira:traffic": "node puppeteer_miraserch.js",
+    "check": "node --check puppeteer_miraserch.js"
+  },
+  "dependencies": {
+    "puppeteer": "^24.7.1"
+  }
+}
