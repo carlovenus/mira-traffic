@@ -66,6 +66,12 @@ async function clickFirstListingImage(page) {
   await firstImage.click();
 }
 
+async function postListingsAction(page) {
+  await delay(5000);
+  await clickFirstListingImage(page);
+  await delay(5000);
+}
+
 (async () => {
   const browser = await puppeteer.launch({
     headless: false,
@@ -106,6 +112,7 @@ async function clickFirstListingImage(page) {
     try {
       await waitForListings(page, 30000);
       console.log('✅ listings-view became visible after first attempt.');
+      await postListingsAction(page);
     } catch (firstErr) {
       console.warn(
         '⚠️ listings-view was not visible within 30s after first attempt; retrying with fallback selectors...'
@@ -125,10 +132,7 @@ async function clickFirstListingImage(page) {
 
       await waitForListings(page, 30000);
       console.log('✅ listings-view became visible after retry.');
-
-      await delay(5000);
-      await clickFirstListingImage(page);
-      await delay(5000);
+      await postListingsAction(page);
     }
   } catch (err) {
     console.error('❌ Script failed:', err);
