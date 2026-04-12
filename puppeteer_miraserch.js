@@ -3,6 +3,8 @@
 const puppeteer = require('puppeteer');
 const SECOND_HAND_ITEMS = require('./second_hand_items.json');
 
+const TAB_COUNT = 5;
+
 const ITALIAN_LOCATIONS = [
   { city: 'Milan', lat: 45.4642, lon: 9.19 },
   { city: 'Rome', lat: 41.9028, lon: 12.4964 },
@@ -56,20 +58,20 @@ async function waitForListings(page, timeout = 30000) {
 }
 
 async function clickFirstListingImage(page) {
-  await page.waitForSelector('#listings-view [dir="rtl"] img', { visible: true, timeout: 30000 });
-  const firstImage = await page.$('#listings-view [dir="rtl"] img');
+  await page.waitForSelector('[dir="rtl"] img', { visible: true, timeout: 30000 });
+  const firstImage = await page.$('[dir="rtl"] img');
 
   if (!firstImage) {
-    throw new Error('No image found inside #listings-view [dir="rtl"]');
+    throw new Error('No image found inside [dir="rtl"]');
   }
 
   await firstImage.click();
 }
 
 async function randomVerticalScrollInRtl(page) {
-  await page.waitForSelector('#listings-view [dir="rtl"]', { visible: true, timeout: 30000 });
+  await page.waitForSelector('[dir="rtl"]', { visible: true, timeout: 30000 });
 
-  await page.$eval('#listings-view [dir="rtl"]', (rtlElement) => {
+  await page.$eval('[dir="rtl"]', (rtlElement) => {
     const maxScroll = Math.max(300, Math.min(1200, rtlElement.scrollHeight || 1200));
     const delta = Math.floor(Math.random() * maxScroll);
     const direction = Math.random() > 0.5 ? 1 : -1;
@@ -89,6 +91,62 @@ async function postListingsAction(page) {
   await delay(5000);
 }
 
+async function runTabFlow(context, tabNumber) {
+  const page = await context.newPage();
+
+  const location = pickRandom(ITALIAN_LOCATIONS);
+  const latitude = jitter(location.lat);
+  const longitude = jitter(location.lon);
+
+  await page.setGeolocation({ latitude, longitude, accuracy: 100 });
+
+  console.log(
+    `[Tab ${tabNumber}] Using geolocation near ${location.city}, Italy (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`
+  );
+
+  try {
+    await page.goto('https://mirasearch.ai', { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+    const firstItem = pickRandom(SECOND_HAND_ITEMS);
+    console.log(`[Tab ${tabNumber}] First query: ${firstItem}`);
+
+    await fillAndSubmit({
+      page,
+      inputSelector: 'textarea[aria-label]',
+      buttonSelector: 'button[type="submit"]',
+      item: firstItem
+    });
+
+    try {
+      await waitForListings(page, 30000);
+      console.log(`[Tab ${tabNumber}] ✅ listings-view visible after first attempt.`);
+      await postListingsAction(page);
+    } catch (firstErr) {
+      console.warn(
+        `[Tab ${tabNumber}] ⚠️ listings-view not visible after 30s; retrying with fallback selectors...`
+      );
+
+      const secondItem = pickRandom(
+        SECOND_HAND_ITEMS.filter((item) => item !== firstItem)
+      );
+      console.log(`[Tab ${tabNumber}] Second query: ${secondItem}`);
+
+      await fillAndSubmit({
+        page,
+        inputSelector: 'textarea[name="message"]',
+        buttonSelector: 'button[type="submit"]',
+        item: secondItem
+      });
+
+      await waitForListings(page, 30000);
+      console.log(`[Tab ${tabNumber}] ✅ listings-view visible after retry.`);
+      await postListingsAction(page);
+    }
+  } finally {
+    await page.close();
+  }
+}
+
 (async () => {
   const browser = await puppeteer.launch({
     headless: false,
@@ -100,56 +158,21 @@ async function postListingsAction(page) {
   });
 
   const context = browser.defaultBrowserContext();
-  const page = await browser.newPage();
-
-  const location = pickRandom(ITALIAN_LOCATIONS);
-  const latitude = jitter(location.lat);
-  const longitude = jitter(location.lon);
-
   await context.overridePermissions('https://mirasearch.ai', ['geolocation']);
-  await page.setGeolocation({ latitude, longitude, accuracy: 100 });
-
-  console.log(
-    `Using geolocation near ${location.city}, Italy (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`
-  );
 
   try {
-    await page.goto('https://mirasearch.ai', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const tabRuns = Array.from({ length: TAB_COUNT }, (_, index) =>
+      runTabFlow(context, index + 1)
+    );
 
-    const firstItem = pickRandom(SECOND_HAND_ITEMS);
-    console.log(`First query: ${firstItem}`);
+    const results = await Promise.allSettled(tabRuns);
+    const failures = results.filter((result) => result.status === 'rejected');
 
-    await fillAndSubmit({
-      page,
-      inputSelector: 'textarea[aria-label]',
-      buttonSelector: 'button[type="submit"]',
-      item: firstItem
-    });
-
-    try {
-      await waitForListings(page, 30000);
-      console.log('✅ listings-view became visible after first attempt.');
-      await postListingsAction(page);
-    } catch (firstErr) {
-      console.warn(
-        '⚠️ listings-view was not visible within 30s after first attempt; retrying with fallback selectors...'
-      );
-
-      const secondItem = pickRandom(
-        SECOND_HAND_ITEMS.filter((item) => item !== firstItem)
-      );
-      console.log(`Second query: ${secondItem}`);
-
-      await fillAndSubmit({
-        page,
-        inputSelector: 'textarea[name="message"]',
-        buttonSelector: 'button[type="submit"]',
-        item: secondItem
+    if (failures.length > 0) {
+      failures.forEach((result, index) => {
+        console.error(`❌ Tab failure ${index + 1}:`, result.reason);
       });
-
-      await waitForListings(page, 30000);
-      console.log('✅ listings-view became visible after retry.');
-      await postListingsAction(page);
+      process.exitCode = 1;
     }
   } catch (err) {
     console.error('❌ Script failed:', err);
