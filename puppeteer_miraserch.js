@@ -1,21 +1,7 @@
 #!/usr/bin/env node
 
 const puppeteer = require('puppeteer');
-
-const SECOND_HAND_ITEMS = [
-  'Nike Air Force 1',
-  'Levi\'s 501 jeans',
-  'Fjallraven Kanken backpack',
-  'Adidas Stan Smith',
-  'Zara trench coat',
-  'North Face puffer jacket',
-  'Doc Martens 1460',
-  'Uniqlo wool sweater',
-  'Ray-Ban Wayfarer',
-  'Patagonia fleece',
-  'Vintage denim jacket',
-  'Converse Chuck Taylor'
-];
+const SECOND_HAND_ITEMS = require('./second_hand_items.json');
 
 const ITALIAN_LOCATIONS = [
   { city: 'Milan', lat: 45.4642, lon: 9.19 },
@@ -36,6 +22,10 @@ function pickRandom(array) {
 
 function jitter(value, magnitude = 0.02) {
   return value + (Math.random() * 2 - 1) * magnitude;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fillAndSubmit({ page, inputSelector, buttonSelector, item }) {
@@ -63,6 +53,17 @@ async function waitForListings(page, timeout = 30000) {
     visible: true,
     timeout
   });
+}
+
+async function clickFirstListingImage(page) {
+  await page.waitForSelector('#listings-view img', { visible: true, timeout: 30000 });
+  const firstImage = await page.$('#listings-view img');
+
+  if (!firstImage) {
+    throw new Error('No image found inside #listings-view');
+  }
+
+  await firstImage.click();
 }
 
 (async () => {
@@ -98,7 +99,7 @@ async function waitForListings(page, timeout = 30000) {
     await fillAndSubmit({
       page,
       inputSelector: 'textarea[aria-label]',
-      buttonSelector: 'button[aria-label="Send button"]',
+      buttonSelector: 'button[type="submit"]',
       item: firstItem
     });
 
@@ -124,12 +125,15 @@ async function waitForListings(page, timeout = 30000) {
 
       await waitForListings(page, 30000);
       console.log('✅ listings-view became visible after retry.');
+
+      await delay(5000);
+      await clickFirstListingImage(page);
+      await delay(5000);
     }
   } catch (err) {
     console.error('❌ Script failed:', err);
     process.exitCode = 1;
   } finally {
-    await page.waitForTimeout(2000);
     await browser.close();
   }
 })();
