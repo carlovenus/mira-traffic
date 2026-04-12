@@ -82,7 +82,7 @@ async function waitForListings(page, timeout = 30000) {
   const latitude = jitter(location.lat);
   const longitude = jitter(location.lon);
 
-  await context.overridePermissions('https://miraserch.ai', ['geolocation']);
+  await context.overridePermissions('https://mirasearch.ai', ['geolocation']);
   await page.setGeolocation({ latitude, longitude, accuracy: 100 });
 
   console.log(
@@ -90,7 +90,7 @@ async function waitForListings(page, timeout = 30000) {
   );
 
   try {
-    await page.goto('https://miraserch.ai', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto('https://mirasearch.ai', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     const firstItem = pickRandom(SECOND_HAND_ITEMS);
     console.log(`First query: ${firstItem}`);
