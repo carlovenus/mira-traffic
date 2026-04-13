@@ -3,7 +3,7 @@
 const puppeteer = require('puppeteer');
 const SECOND_HAND_ITEMS = require('./second_hand_items.json');
 
-const TAB_COUNT = 5;
+const TAB_COUNT = 1;
 
 const ITALIAN_LOCATIONS = [
   { city: 'Milan', lat: 45.4642, lon: 9.19 },
@@ -58,19 +58,48 @@ async function waitForListings(page, timeout = 30000) {
 }
 
 async function clickFirstListingImage(page) {
-  await page.waitForSelector('.product-card', { visible: true, timeout: 30000 });
-  const firstProductCard = await page.$('.product-card');
+  const selector = '.product-card img';
 
-  if (!firstProductCard) {
-    throw new Error('No element found for selector .product-card');
+  try {
+    await page.waitForSelector(selector, { timeout: 100_000 });
+
+    const images = await page.$$(selector);
+    if (images.length === 0) {
+      throw new Error(`No elements found for selector: ${selector}`);
+    }
+
+    for (const [index, image] of images.entries()) {
+      const box = await image.boundingBox();
+      if (!box || box.width === 0 || box.height === 0) {
+        console.log(`Skipping image ${index}: not visible in layout`);
+        continue;
+      }
+
+      await image.evaluate((el) => {
+        el.scrollIntoView({ block: 'center', inline: 'center' });
+      });
+
+      try {
+        await image.click();
+        console.log(`Clicked image ${index}`);
+        return;
+      } catch (err) {
+        console.log(`Failed clicking image ${index}: ${err.message}`);
+      }
+    }
+
+    throw new Error(`No clickable visible image found for selector: ${selector}`);
+  } catch (err) {
+    console.error('clickFirstListingImage failed:', err);
+    throw err;
   }
-
-  await firstProductCard.click();
 }
 
 async function postListingsAction(page) {
   await delay(5000);
+  console.log("postListingsAction pre")
   await clickFirstListingImage(page);
+  console.log("postListingsAction post")
   await delay(5000);
 }
 
@@ -101,29 +130,29 @@ async function runTabFlow(context, tabNumber) {
     });
 
     try {
-      await waitForListings(page, 30000);
+      await waitForListings(page, 60000);
       console.log(`[Tab ${tabNumber}] ✅ listings-view visible after first attempt.`);
       await postListingsAction(page);
     } catch (firstErr) {
-      console.warn(
-        `[Tab ${tabNumber}] ⚠️ listings-view not visible after 30s; retrying with fallback selectors...`
-      );
-
-      const secondItem = pickRandom(
-        SECOND_HAND_ITEMS.filter((item) => item !== firstItem)
-      );
-      console.log(`[Tab ${tabNumber}] Second query: ${secondItem}`);
-
-      await fillAndSubmit({
-        page,
-        inputSelector: 'textarea[name="message"]',
-        buttonSelector: 'button[type="submit"]',
-        item: secondItem
-      });
-
-      await waitForListings(page, 30000);
-      console.log(`[Tab ${tabNumber}] ✅ listings-view visible after retry.`);
-      await postListingsAction(page);
+      // console.warn(
+      //   `[Tab ${tabNumber}] ⚠️ listings-view not visible after 30s; retrying with fallback selectors...`
+      // );
+      //
+      // const secondItem = pickRandom(
+      //   SECOND_HAND_ITEMS.filter((item) => item !== firstItem)
+      // );
+      // console.log(`[Tab ${tabNumber}] Second query: ${secondItem}`);
+      //
+      // await fillAndSubmit({
+      //   page,
+      //   inputSelector: 'textarea[name="message"]',
+      //   buttonSelector: 'button[type="submit"]',
+      //   item: secondItem
+      // });
+      //
+      // await waitForListings(page, 30000);
+      // console.log(`[Tab ${tabNumber}] ✅ listings-view visible after retry.`);
+      // await postListingsAction(page);
     }
   } finally {
     await page.close();
