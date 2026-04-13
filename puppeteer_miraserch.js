@@ -103,7 +103,25 @@ async function postListingsAction(page) {
   await delay(5000);
 }
 
-async function runTabFlow(context, tabNumber) {
+async function executeGoogleOriginFlow(page, tabNumber) {
+  await page.goto('https://www.google.it', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForSelector('textarea[name="q"]', { visible: true, timeout: 15000 });
+  await page.type('textarea[name="q"]', 'aggregatore second hand usato mira', { delay: 40 });
+  await page.keyboard.press('Enter');
+
+  const firstResultSelector = 'a h3';
+  await page.waitForSelector(firstResultSelector, { visible: true, timeout: 20000 });
+
+  const firstResult = await page.$(firstResultSelector);
+  if (!firstResult) {
+    throw new Error(`[Tab ${tabNumber}] No Google result found to click.`);
+  }
+
+  await firstResult.click();
+  await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 60000 });
+}
+
+async function runTabFlow(context, tabNumber, origin) {
   const page = await context.newPage();
 
   const location = pickRandom(ITALIAN_LOCATIONS);
@@ -117,7 +135,12 @@ async function runTabFlow(context, tabNumber) {
   );
 
   try {
-    await page.goto('https://mirasearch.ai', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    if (origin === 'google') {
+      console.log(`[Tab ${tabNumber}] Starting user journey from Google.`);
+      await executeGoogleOriginFlow(page, tabNumber);
+    } else {
+      await page.goto('https://mirasearch.ai', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    }
 
     const firstItem = pickRandom(SECOND_HAND_ITEMS);
     console.log(`[Tab ${tabNumber}] First query: ${firstItem}`);
@@ -160,6 +183,12 @@ async function runTabFlow(context, tabNumber) {
 }
 
 (async () => {
+  const origin = process.argv[2] ?? null;
+  if (origin !== null && origin !== 'google') {
+    console.error(`❌ Invalid origin "${origin}". Supported values: "google" or no value.`);
+    process.exit(1);
+  }
+
   const browser = await puppeteer.launch({
     headless: false,
     defaultViewport: {
@@ -174,7 +203,7 @@ async function runTabFlow(context, tabNumber) {
 
   try {
     const tabRuns = Array.from({ length: TAB_COUNT }, (_, index) =>
-      runTabFlow(context, index + 1)
+      runTabFlow(context, index + 1, origin)
     );
 
     const results = await Promise.allSettled(tabRuns);
