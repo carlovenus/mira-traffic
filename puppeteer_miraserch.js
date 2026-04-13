@@ -3,7 +3,7 @@
 const puppeteer = require('puppeteer');
 const SECOND_HAND_ITEMS = require('./second_hand_items.json');
 
-const TAB_COUNT = 1;
+const TAB_COUNT = 5;
 
 const ITALIAN_LOCATIONS = [
   { city: 'Milan', lat: 45.4642, lon: 9.19 },
@@ -30,7 +30,18 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function activatePage(page) {
+  try {
+    await page.bringToFront();
+    await delay(150);
+  } catch (err) {
+    console.warn('bringToFront failed:', err.message);
+  }
+}
+
 async function fillAndSubmit({ page, inputSelector, buttonSelector, item }) {
+  await activatePage(page);
+
   await page.waitForSelector(inputSelector, { visible: true, timeout: 15000 });
 
   const input = await page.$(inputSelector);
@@ -43,10 +54,13 @@ async function fillAndSubmit({ page, inputSelector, buttonSelector, item }) {
   await input.type(item, { delay: 40 });
 
   await page.waitForSelector(buttonSelector, { visible: true, timeout: 10000 });
+  await activatePage(page);
   await page.click(buttonSelector);
 }
 
 async function waitForListings(page, timeout = 30000) {
+  await activatePage(page);
+
   await page.waitForFunction(() => window.location.pathname.includes('/chat'), {
     timeout
   });
@@ -61,7 +75,8 @@ async function clickFirstListingImage(page) {
   const selector = '.product-card img';
 
   try {
-    await page.waitForSelector(selector, { timeout: 100_000 });
+    await activatePage(page);
+    await page.waitForSelector(selector, { timeout: 100000 });
 
     const images = await page.$$(selector);
     if (images.length === 0) {
@@ -71,7 +86,6 @@ async function clickFirstListingImage(page) {
     for (const [index, image] of images.entries()) {
       const box = await image.boundingBox();
       if (!box || box.width === 0 || box.height === 0) {
-        console.log(`Skipping image ${index}: not visible in layout`);
         continue;
       }
 
@@ -79,12 +93,24 @@ async function clickFirstListingImage(page) {
         el.scrollIntoView({ block: 'center', inline: 'center' });
       });
 
+      await delay(300);
+      await activatePage(page);
+
       try {
-        await image.click();
+        await image.click({ delay: 50 });
         console.log(`Clicked image ${index}`);
         return;
       } catch (err) {
         console.log(`Failed clicking image ${index}: ${err.message}`);
+
+        // fallback: DOM click
+        try {
+          await image.evaluate((el) => el.click());
+          console.log(`Clicked image ${index} via evaluate`);
+          return;
+        } catch (evalErr) {
+          console.log(`Evaluate click failed for image ${index}: ${evalErr.message}`);
+        }
       }
     }
 
@@ -96,15 +122,21 @@ async function clickFirstListingImage(page) {
 }
 
 async function postListingsAction(page) {
+  await activatePage(page);
   await delay(5000);
-  console.log("postListingsAction pre")
+  console.log('postListingsAction pre');
   await clickFirstListingImage(page);
-  console.log("postListingsAction post")
+  console.log('postListingsAction post');
   await delay(5000);
 }
 
 async function executeGoogleOriginFlow(page, tabNumber, item) {
-  await page.goto('https://www.google.com/search?q=' + item, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await activatePage(page);
+
+  await page.goto(`https://www.google.com/search?q=${encodeURIComponent(item)}`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000
+  });
 
   const firstResultSelector = 'a h3';
   await page.waitForSelector(firstResultSelector, { visible: true, timeout: 20000 });
@@ -114,8 +146,12 @@ async function executeGoogleOriginFlow(page, tabNumber, item) {
     throw new Error(`[Tab ${tabNumber}] No Google result found to click.`);
   }
 
-  await firstResult.click();
-  await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 60000 });
+  await activatePage(page);
+
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 60000 }),
+    firstResult.click()
+  ]);
 }
 
 async function runTabFlow(context, tabNumber, origin) {
@@ -138,19 +174,25 @@ async function runTabFlow(context, tabNumber, origin) {
   await page.setGeolocation({ latitude, longitude, accuracy: 100 });
 
   console.log(
-    `[Tab ${tabNumber}] Using geolocation near ${location.city}, Italy (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`
+      `[Tab ${tabNumber}] Using geolocation near ${location.city}, Italy (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`
   );
 
   try {
+    // small stagger so all 5 tabs don't compete at the same instant
+    await delay((tabNumber - 1) * 1200);
+
     const firstItem = pickRandom(SECOND_HAND_ITEMS);
 
     if (origin === 'google') {
       console.log(`[Tab ${tabNumber}] Starting user journey from Google.`);
       await executeGoogleOriginFlow(page, tabNumber, firstItem);
     } else {
-      await page.goto('https://mirasearch.ai', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await activatePage(page);
+      await page.goto('https://mirasearch.ai', {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+      });
     }
-
 
     console.log(`[Tab ${tabNumber}] First query: ${firstItem}`);
 
@@ -166,25 +208,8 @@ async function runTabFlow(context, tabNumber, origin) {
       console.log(`[Tab ${tabNumber}] ✅ listings-view visible after first attempt.`);
       await postListingsAction(page);
     } catch (firstErr) {
-      // console.warn(
-      //   `[Tab ${tabNumber}] ⚠️ listings-view not visible after 30s; retrying with fallback selectors...`
-      // );
-      //
-      // const secondItem = pickRandom(
-      //   SECOND_HAND_ITEMS.filter((item) => item !== firstItem)
-      // );
-      // console.log(`[Tab ${tabNumber}] Second query: ${secondItem}`);
-      //
-      // await fillAndSubmit({
-      //   page,
-      //   inputSelector: 'textarea[name="message"]',
-      //   buttonSelector: 'button[type="submit"]',
-      //   item: secondItem
-      // });
-      //
-      // await waitForListings(page, 30000);
-      // console.log(`[Tab ${tabNumber}] ✅ listings-view visible after retry.`);
-      // await postListingsAction(page);
+      console.error(`[Tab ${tabNumber}] listings flow failed:`, firstErr.message);
+      throw firstErr;
     }
   } finally {
     await page.close();
@@ -194,6 +219,7 @@ async function runTabFlow(context, tabNumber, origin) {
 (async () => {
   const rawOrigin = process.argv[2];
   const origin = rawOrigin && rawOrigin.trim() !== '' ? rawOrigin : null;
+
   if (origin !== null && origin !== 'google') {
     console.error(`❌ Invalid origin "${origin}". Supported values: "google" or no value.`);
     process.exit(1);
@@ -205,16 +231,20 @@ async function runTabFlow(context, tabNumber, origin) {
       width: 1920,
       height: 1280,
       deviceScaleFactor: 1
-    }
+    },
+    args: [
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding'
+    ]
   });
 
   const context = browser.defaultBrowserContext();
   await context.overridePermissions('https://mirasearch.ai', ['geolocation']);
 
-
   try {
     const tabRuns = Array.from({ length: TAB_COUNT }, (_, index) =>
-      runTabFlow(context, index + 1, origin)
+        runTabFlow(context, index + 1, origin)
     );
 
     const results = await Promise.allSettled(tabRuns);
