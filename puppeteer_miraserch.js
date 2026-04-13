@@ -183,7 +183,8 @@ async function runTabFlow(context, tabNumber, origin) {
 }
 
 (async () => {
-  const origin = process.argv[2] ?? null;
+  const rawOrigin = process.argv[2];
+  const origin = rawOrigin && rawOrigin.trim() !== '' ? rawOrigin : null;
   if (origin !== null && origin !== 'google') {
     console.error(`❌ Invalid origin "${origin}". Supported values: "google" or no value.`);
     process.exit(1);

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Puppeteer traffic script for mirasearch.ai",
   "scripts": {
-    "mira:traffic": "node puppeteer_miraserch.js",
+    "mira:traffic": "node puppeteer_miraserch.js ${npm_config_origin:-}",
     "check": "node --check puppeteer_miraserch.js"
   },
   "dependencies": {
