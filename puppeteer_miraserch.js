@@ -103,8 +103,8 @@ async function postListingsAction(page) {
   await delay(5000);
 }
 
-async function executeGoogleOriginFlow(page, tabNumber) {
-  await page.goto('https://www.google.com/search?q=aggregatore second hand usato mira', { waitUntil: 'domcontentloaded', timeout: 60000 });
+async function executeGoogleOriginFlow(page, tabNumber, item) {
+  await page.goto('https://www.google.com/search?q=' + item, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
   const firstResultSelector = 'a h3';
   await page.waitForSelector(firstResultSelector, { visible: true, timeout: 20000 });
@@ -142,14 +142,16 @@ async function runTabFlow(context, tabNumber, origin) {
   );
 
   try {
+    const firstItem = pickRandom(SECOND_HAND_ITEMS);
+
     if (origin === 'google') {
       console.log(`[Tab ${tabNumber}] Starting user journey from Google.`);
-      await executeGoogleOriginFlow(page, tabNumber);
+      await executeGoogleOriginFlow(page, tabNumber, firstItem);
     } else {
       await page.goto('https://mirasearch.ai', { waitUntil: 'domcontentloaded', timeout: 60000 });
     }
 
-    const firstItem = pickRandom(SECOND_HAND_ITEMS);
+
     console.log(`[Tab ${tabNumber}] First query: ${firstItem}`);
 
     await fillAndSubmit({
