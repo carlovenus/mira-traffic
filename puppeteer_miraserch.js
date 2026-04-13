@@ -104,10 +104,7 @@ async function postListingsAction(page) {
 }
 
 async function executeGoogleOriginFlow(page, tabNumber) {
-  await page.goto('https://www.google.it', { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForSelector('textarea[name="q"]', { visible: true, timeout: 15000 });
-  await page.type('textarea[name="q"]', 'aggregatore second hand usato mira', { delay: 40 });
-  await page.keyboard.press('Enter');
+  await page.goto('https://www.google.com/search?q=aggregatore second hand usato mira', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
   const firstResultSelector = 'a h3';
   await page.waitForSelector(firstResultSelector, { visible: true, timeout: 20000 });
@@ -123,6 +120,16 @@ async function executeGoogleOriginFlow(page, tabNumber) {
 
 async function runTabFlow(context, tabNumber, origin) {
   const page = await context.newPage();
+
+  await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+  );
+
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'it-IT,it;q=0.9'
+  });
+
+  await page.emulateTimezone('Europe/Rome');
 
   const location = pickRandom(ITALIAN_LOCATIONS);
   const latitude = jitter(location.lat);
@@ -191,16 +198,17 @@ async function runTabFlow(context, tabNumber, origin) {
   }
 
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: true,
     defaultViewport: {
-      width: 1440,
-      height: 900,
+      width: 1920,
+      height: 1280,
       deviceScaleFactor: 1
     }
   });
 
   const context = browser.defaultBrowserContext();
   await context.overridePermissions('https://mirasearch.ai', ['geolocation']);
+
 
   try {
     const tabRuns = Array.from({ length: TAB_COUNT }, (_, index) =>
